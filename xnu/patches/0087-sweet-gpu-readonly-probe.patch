@@ -1,0 +1,139 @@
+diff --git a/bsd/conf/files b/bsd/conf/files
+index 480ebac..d5cd966 100644
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -112,6 +112,7 @@ bsd/dev/sweet_rpmh.c			standard
+ bsd/dev/sweet_spmi.c			standard
+ bsd/dev/sweet_usb.c			standard
+ bsd/dev/sweet_device.c			standard
++bsd/dev/sweet_gpu.c			standard
+ bsd/dev/mem.c				standard
+ bsd/dev/munge.c 			optional config_requires_u32_munging
+ bsd/dev/unix_startup.c			standard
+diff --git a/bsd/dev/sweet_gpu.c b/bsd/dev/sweet_gpu.c
+new file mode 100644
+index 0000000..7d365a7
+--- /dev/null
++++ b/bsd/dev/sweet_gpu.c
+@@ -0,0 +1,101 @@
++/* By Maksieku */
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <machine/machine_routines.h>
++#include <pexpert/pexpert.h>
++#include "sweet_device.h"
++
++extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
++void sweet_gpu_probe(void);
++
++#define GPU_GCC_SIZE        0x00090000u
++#define GPU_CC_SIZE         0x00009000u
++#define GPU_CBCR_OFF        (1u << 31)
++#define GPU_GDSC_PWR_ON     (1u << 31)
++
++static const struct {
++	const char *name;
++	uint32_t    off;
++} gpu_cc_regs[] = {
++	{ "cx-gdscr", 0x106c },
++	{ "cx-gds-hw-ctrl", 0x1540 },
++	{ "gx-gdscr", 0x100c },
++	{ "cxo-aon", 0x1004 },
++	{ "gx-gmu", 0x1064 },
++	{ "ahb", 0x1078 },
++	{ "crc-ahb", 0x107c },
++	{ "cx-apb", 0x1088 },
++	{ "cx-snoc-dvm", 0x108c },
++	{ "cx-gmu", 0x1098 },
++	{ "cxo", 0x109c },
++	{ "gmu-rcg-cmd", 0x1120 },
++	{ "gmu-rcg-cfg", 0x1124 },
++	{ "pll1-mode", 0x100 },
++	{ "pll1-l", 0x104 },
++};
++
++static uint32_t
++gpu_rd(vm_offset_t base, uint32_t off)
++{
++	uint32_t v = *(volatile uint32_t *)(base + off);
++	__asm__ volatile ("dmb oshld" ::: "memory");
++	return v;
++}
++
++void
++sweet_gpu_probe(void)
++{
++	int mode = 0;
++	uint32_t gcc_br[8];
++
++	PE_parse_boot_argn("sweetgpu", &mode, sizeof(mode));
++	if (mode == 0) {
++		return;
++	}
++	uint64_t cc_pa = sweet_dev_u64("gpu-cc", 0);
++	unsigned nbr = sweet_dev_u32_array("gpu-gcc-branches", gcc_br, 8);
++	if (cc_pa == 0 || nbr == 0) {
++		printf("SWEET GPU: no GPU profile for %s; probe skipped\n", sweet_dev_name());
++		return;
++	}
++	printf("SWEET GPU: %s read-only probe, gpu-cc %#llx gpu %#llx gmu %#llx chip-id %#x\n",
++	    sweet_dev_name(), (unsigned long long)cc_pa,
++	    (unsigned long long)sweet_dev_u64("gpu", 0), (unsigned long long)sweet_dev_u64("gpu-gmu", 0),
++	    sweet_dev_u32("gpu-chip-id", 0));
++	vm_offset_t gcc = ml_io_map(sweet_dev_u64("gcc", 0x00100000), GPU_GCC_SIZE);
++	if (gcc == 0) {
++		printf("SWEET GPU: GCC mapping failed\n");
++		return;
++	}
++	uint32_t cfg_ahb = gpu_rd(gcc, gcc_br[0]);
++	for (unsigned i = 0; i < nbr; i++) {
++		uint32_t v = i == 0 ? cfg_ahb : gpu_rd(gcc, gcc_br[i]);
++		printf("SWEET GPU: GCC branch %#x = %#x (%s)\n", gcc_br[i], v, (v & GPU_CBCR_OFF) ? "off" : "on");
++	}
++	uint32_t vote = gpu_rd(gcc, 0x52004);
++	printf("SWEET GPU: GCC vote 0x52004 = %#x gpll0 %s gpll0-div %s\n", vote,
++	    (vote & (1u << 15)) ? "on" : "off", (vote & (1u << 16)) ? "on" : "off");
++	if (cfg_ahb & GPU_CBCR_OFF) {
++		printf("SWEET GPU: GPU config AHB clock is off; GPU clock controller not read\n");
++		return;
++	}
++	vm_offset_t cc = ml_io_map(cc_pa, GPU_CC_SIZE);
++	if (cc == 0) {
++		printf("SWEET GPU: GPU clock controller mapping failed\n");
++		return;
++	}
++	uint32_t cx = 0, gx = 0;
++	for (unsigned i = 0; i < sizeof(gpu_cc_regs) / sizeof(gpu_cc_regs[0]); i++) {
++		uint32_t v = gpu_rd(cc, gpu_cc_regs[i].off);
++		if (gpu_cc_regs[i].off == 0x106c) {
++			cx = v;
++		} else if (gpu_cc_regs[i].off == 0x100c) {
++			gx = v;
++		}
++		printf("SWEET GPU: gpucc %-14s +%#06x = %#010x\n", gpu_cc_regs[i].name, gpu_cc_regs[i].off, v);
++	}
++	printf("SWEET GPU: CX power domain %s, GX power domain %s; GPU core and GMU registers not read in this stage\n",
++	    (cx & GPU_GDSC_PWR_ON) ? "on" : "off", (gx & GPU_GDSC_PWR_ON) ? "on" : "off");
++}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
+diff --git a/bsd/dev/sweet_ufs.c b/bsd/dev/sweet_ufs.c
+index 8c66633..f461d81 100644
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -54,6 +54,7 @@ extern void sweet_sample_start(void);
+ extern void sweet_keys_init(void);
+ extern void sweet_touch_init(void);
+ extern void sweet_usb_probe(void);
++extern void sweet_gpu_probe(void);
+ 
+ #define REG_CAP         0x00
+ #define REG_VER         0x08
+@@ -688,6 +689,7 @@ sweet_ufs_init(void)
+ 	sweet_keys_init();
+ 	sweet_touch_init();
+ 	sweet_usb_probe();
++	sweet_gpu_probe();
+ 	return 0;
+ }
+ 
