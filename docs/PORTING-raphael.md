@@ -1,7 +1,12 @@
 # Porting ios-sweet to the Mi 9T Pro / Redmi K20 Pro (`raphael`, SM8150)
 
-This branch adds a second target, `raphael`, to the ios-sweet bring-up. Nothing
-here has run on a raphael yet. Every hardware fact below comes from Xiaomi's
+> **Status 2026-11-08:** done up to the GUI. iOS 16.7.16 boots to the lock
+> screen on a real raphael with all 8 cores, UFS root, display and GT9889 touch
+> (see the README and NOTES.md). The sections below are the original plan; the
+> fixes found on the phone are listed in NOTES.md (CPU compatible, `--highmem`,
+> touch on wrap2 SE2 with GTX8 registers at `0x4100`).
+
+This branch adds a second target, `raphael`, to the ios-sweet bring-up. Every hardware fact below comes from Xiaomi's
 `raphael-p-oss` kernel device tree, mainline Linux (`sm8150.dtsi`,
 `gcc-sm8150.c`, `pinctrl-sm8150.c`) and the downstream SDE/Goodix drivers.
 Each one is checked again on your phone in step 2 before anything boots.
