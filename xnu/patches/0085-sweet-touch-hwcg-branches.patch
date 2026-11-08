@@ -1,0 +1,25 @@
+diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
+index e4ae2a1..9ed7a3c 100644
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -228,6 +228,11 @@ touch_clocks(void)
+ 		}
+ 	}
+ 	for (unsigned i = 0; i < tc.nbranches; ++i) {
++		uint32_t cbcr = touch_rd(st.gcc, tc.branches[i]);
++		if (cbcr & 2u) {
++			printf("SWEET TOUCH: GCC branch %#x hardware-gated (%#x), on demand\n", tc.branches[i], cbcr);
++			continue;
++		}
+ 		if (!touch_wait_clear(st.gcc, tc.branches[i], 1u << 31)) {
+ 			printf("SWEET TOUCH: GCC branch %#x halted (%#x)\n", tc.branches[i],
+ 			    touch_rd(st.gcc, tc.branches[i]));
+@@ -726,7 +731,7 @@ touch_thread(void *arg, wait_result_t result)
+ 	(void)PE_parse_boot_argn("sweettouchdelay", &delay_s, sizeof(delay_s));
+ 	printf("SWEET TOUCH: starting in %u s\n", delay_s);
+ 	touch_wait(delay_s * 1000u);
+-	printf("SWEET TOUCH: mapping GCC/TLMM/SE7\n");
++	printf("SWEET TOUCH: mapping GCC/TLMM/SE %#llx\n", (unsigned long long)tc.se_pa);
+ 	st.gcc = ml_io_map(tc.gcc_pa, 0x60000);
+ 	st.gpio = ml_io_map(tc.tlmm_pa, tc.tlmm_size);
+ 	st.se = ml_io_map(tc.se_pa, 0x4000);

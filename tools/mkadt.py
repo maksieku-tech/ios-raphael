@@ -215,7 +215,7 @@ def build(seed=None, qemu=False, highmem=False, device='sweet', emit_profile=Non
         cpu_nodes.append(node(f'cpu{core}', [
             ph(),
             ('device_type', cstr('cpu')),
-            ('compatible', cstr(dev['cpu_compat']) + cstr('ARM,v8')),
+            ('compatible', cstr(dev['cpu_compat']) + (b'' if dev['cpu_compat'] == 'qcom,kryo470' else cstr('qcom,kryo470')) + cstr('ARM,v8')),
             ('reg', u32(core << 8)),  # actual MPIDR Aff1:Aff0, NOT logical ID
             ('cpu-id', u32(core)),   # descriptive: XNU assigns IDs by DT order
             ('cluster-id', u32(0)),  # descriptive; see ml_parse_cpu_topology
